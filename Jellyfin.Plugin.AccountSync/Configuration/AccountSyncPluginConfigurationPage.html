@@ -1,0 +1,44 @@
+﻿<div class="page type-interior pluginConfigurationPage AccountSyncPluginConfigurationPage"
+     data-controller="__plugin/AccountSyncPluginConfigurationPageJS" data-role="page"
+     id="accountSyncConfigurationPage" style="align-items: center; margin: auto; padding: 3em;">
+    <div data-role="content">
+        <div class="content-primary">
+            <h1>Account Play State Progress Sync</h1>
+            <form id="accountSyncForm">
+
+                <div class="selectContainer">
+                    <label class="selectLabel" for="syncFromAccount">Synchronize play state progress from:</label>
+                    <select class="emby-select-withcolor emby-select" id="syncFromAccount" is="emby-select" label="Synchronize play state progress from:"
+                            name="syncFromAccount"></select>
+                    <div class="fieldDescription">
+                        The account to synchronize play-state data from.
+                    </div>
+                    <div class="selectArrowContainer">
+                        <div style="visibility:hidden;display:none;">0</div>
+                        <span aria-hidden="true" class="selectArrow material-icons keyboard_arrow_down"></span>
+                    </div>
+                </div>
+
+                <div class="selectContainer">
+                    <label class="selectLabel" for="syncToAccount">Synchronize play state progress to:</label>
+                    <select class="emby-select-withcolor emby-select" id="syncToAccount" is="emby-select" label="Synchronize play state progress to:"
+                            name="syncToAccount"></select>
+                    <div class="fieldDescription">
+                        The account to synchronize play-state data to.
+                    </div>
+                    <div class="selectArrowContainer">
+                        <div style="visibility:hidden;display:none;">0</div>
+                        <span aria-hidden="true" class="selectArrow material-icons keyboard_arrow_down"></span>
+                    </div>
+                </div>
+
+                <button class="raised button-submit block emby-button" data-theme="b" id="addSyncProfile" is="emby-button" type="button">
+                    Add Sync Profile
+                </button>
+
+                <h2 class="sectionTitle">Existing Sync Profiles</h2>
+                <div class="itemsContainer vertical-wrap" data-inset='true' id="existingSyncProfilesContainer"></div>
+            </form>
+        </div>
+    </div>
+</div>
