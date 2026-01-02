@@ -60,14 +60,15 @@ jobs:
 
     - name: Commit and push manifest update
       run: |
-        git checkout master
-        git pull origin master
+        git fetch origin master
+        git checkout -B master origin/master
         # Add new version from temp file to manifest
         jq --argjson newVersion "$(cat /tmp/new_version.json)" '.[].versions += [$newVersion]' manifest.json > manifest_temp.json && mv manifest_temp.json manifest.json
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add manifest.json
         git commit -m "Update manifest for version $VERSION" || echo "No changes to commit"
+        git push origin master
         git push
 
     - name: Create Release
