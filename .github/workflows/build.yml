@@ -68,8 +68,7 @@ jobs:
         git config --local user.name "GitHub Action"
         git add manifest.json
         git commit -m "Update manifest for version $VERSION" || echo "No changes to commit"
-        git push origin master
-        git push
+        git push origin HEAD:refs/heads/master
 
     - name: Create Release
       uses: actions/create-release@v1
