@@ -38,7 +38,7 @@ jobs:
       with:
         draft: false
         prerelease: false
-        release_name: Release ${{ github.ref }}
+        release_name: ${{ github.ref }}
         tag_name: ${{ github.ref }}
         body: |
           Automated release of AccountSync plugin.
