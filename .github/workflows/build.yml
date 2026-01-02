@@ -16,11 +16,6 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         fetch-depth: 0
 
-    - name: Checkout main branch
-      run: |
-        git checkout main || git checkout master
-        git pull origin main || git pull origin master
-
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
@@ -56,8 +51,7 @@ jobs:
 
     - name: Update manifest.json
       run: |
-        # Add new version entry to the versions array
-        ZIP_URL="https://github.com/m-soltys/Jellyfin.AccountSync/releases/download/$VERSION/Jellyfin.AccountSync-v$VERSION.zip"
+        git checkout master
         NEW_VERSION=$(jq -n --arg version "$VERSION" --arg checksum "$CHECKSUM" --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg zipurl "$ZIP_URL" \
         '{version: $version, changelog: "Automated release", targetAbi: "10.9.0.0", sourceUrl: $zipurl, checksum: $checksum, timestamp: $timestamp}')
 
