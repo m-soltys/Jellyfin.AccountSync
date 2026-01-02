@@ -39,7 +39,7 @@ jobs:
       run: dotnet build --configuration Release --no-restore
 
     - name: Publish
-      run: dotnet publish ./Jellyfin.Plugin.AccountSync/Jellyfin.Plugin.AccountSync.csproj --configuration Release --no-build --output ./publish --framework net9.0
+      run: dotnet publish --configuration Release --no-build --output ./publish
 
     - name: Create ZIP
       run: |
