@@ -1,8 +1,8 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Plugin.AccountSync.Services;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
@@ -12,7 +12,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.AccountSync;
 
-public sealed class ServerMediator : IHostedService, IDisposable
+public sealed partial class ServerMediator : IHostedService, IDisposable
 {
     private readonly ILogger<ServerMediator> _logger;
 
@@ -20,6 +20,7 @@ public sealed class ServerMediator : IHostedService, IDisposable
     private readonly IUserDataManager _userDataManager;
     private readonly ISynchronizeService _synchronizeService;
     private readonly ISessionManager _sessionManager;
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _syncLocks = new();
 
     public ServerMediator(
         ISessionManager sessionManager,
@@ -37,7 +38,7 @@ public sealed class ServerMediator : IHostedService, IDisposable
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Starting Account Sync plugin and registering event handlers");
+        LogStartingAccountSyncPluginAndRegisteringEventHandlers();
 
         _sessionManager.PlaybackStopped += SessionManager_PlaybackStopped;
         _userDataManager.UserDataSaved += UserDataManager_UserDataSaved;
@@ -47,7 +48,7 @@ public sealed class ServerMediator : IHostedService, IDisposable
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Stopping Account Sync plugin and unregistering event handlers");
+        LogStoppingAccountSyncPluginAndUnregisteringEventHandlers();
 
         _sessionManager.PlaybackStopped -= SessionManager_PlaybackStopped;
         _userDataManager.UserDataSaved -= UserDataManager_UserDataSaved;
@@ -66,12 +67,20 @@ public sealed class ServerMediator : IHostedService, IDisposable
         if (disposing)
         {
             _sessionManager.PlaybackStopped -= SessionManager_PlaybackStopped;
+            _userDataManager.UserDataSaved -= UserDataManager_UserDataSaved;
+
+            foreach (var semaphore in _syncLocks.Values)
+            {
+                semaphore.Dispose();
+            }
+
+            _syncLocks.Clear();
         }
     }
 
     private void UserDataManager_UserDataSaved(object? sender, UserDataSaveEventArgs userDataSaveEventArgs)
     {
-        _logger.LogInformation("UserDataSaved event triggered by {UserId}", userDataSaveEventArgs.UserId);
+        LogUserdatasavedEventTriggeredByUserid(userDataSaveEventArgs.UserId);
         if (userDataSaveEventArgs.SaveReason != UserDataSaveReason.TogglePlayed)
         {
             return;
@@ -88,18 +97,35 @@ public sealed class ServerMediator : IHostedService, IDisposable
         }
 
         var accountSyncs = AccountSyncPlugin.Instance.AccountSyncPluginConfiguration.SyncList.Where(user => user.SyncFromAccount == userDataSaveEventArgs.UserId).ToList();
-        _logger.LogInformation("Item played state toggled manually. Syncing from {UserId}", userDataSaveEventArgs.UserId);
+        LogItemPlayedStateToggledManuallySyncingFromUserid(userDataSaveEventArgs.UserId);
 
-        foreach (var syncToUser in accountSyncs.Select(sync => _userManager.GetUserById(sync.SyncToAccount)).OfType<User>())
+        foreach (var syncToUser in accountSyncs.Select(sync => _userManager.GetUserById(sync.SyncToAccount)).Where(u => u != null)!)
         {
-            _logger.LogInformation("Syncing from {UserId} to {@SyncToUsername}", userDataSaveEventArgs.UserId, syncToUser.Username);
-            _synchronizeService.SynchronizePlayState(syncToUser, userDataSaveEventArgs.Item, userDataSaveEventArgs.UserData.PlaybackPositionTicks, userDataSaveEventArgs.UserData.Played, CancellationToken.None);
+            LogSyncingFromUseridToSynctousername(userDataSaveEventArgs.UserId, syncToUser.Username);
+
+            var lockKey = $"{syncToUser.Id}:{userDataSaveEventArgs.Item.Id}";
+            var semaphore = _syncLocks.GetOrAdd(lockKey, _ => new SemaphoreSlim(1, 1));
+
+            Task.Run(async () =>
+            {
+                if (await semaphore.WaitAsync(0).ConfigureAwait(false))
+                {
+                    try
+                    {
+                        _synchronizeService.SynchronizePlayState(syncToUser, userDataSaveEventArgs.Item, userDataSaveEventArgs.UserData.PlaybackPositionTicks, userDataSaveEventArgs.UserData.Played, CancellationToken.None);
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                }
+            });
         }
     }
 
     private void SessionManager_PlaybackStopped(object? sender, PlaybackStopEventArgs playbackStopEventArgs)
     {
-        _logger.LogInformation("Playback stopped. Syncing from {SessionUserName}", playbackStopEventArgs.Session.UserName);
+        LogPlaybackStoppedSyncingFromSessionusername(playbackStopEventArgs.Session.UserName);
 
         if (AccountSyncPlugin.Instance is null)
         {
@@ -108,10 +134,48 @@ public sealed class ServerMediator : IHostedService, IDisposable
 
         var accountSyncs = AccountSyncPlugin.Instance.Configuration.SyncList.Where(user => user.SyncFromAccount == playbackStopEventArgs.Session.UserId).ToList();
 
-        foreach (var syncToUser in accountSyncs.Select(sync => _userManager.GetUserById(sync.SyncToAccount)).OfType<User>())
+        foreach (var syncToUser in accountSyncs.Select(sync => _userManager.GetUserById(sync.SyncToAccount)).Where(u => u != null)!)
         {
-            _logger.LogInformation("Syncing from {SessionUserName} to {@SyncToUsername}", playbackStopEventArgs.Session.UserName, syncToUser.Username);
-            _synchronizeService.SynchronizePlayState(syncToUser, playbackStopEventArgs.Item, playbackStopEventArgs.PlaybackPositionTicks, playbackStopEventArgs.PlayedToCompletion, CancellationToken.None);
+            LogSyncingFromSessionusernameToSynctousername(playbackStopEventArgs.Session.UserName, syncToUser.Username);
+
+            var lockKey = $"{syncToUser.Id}:{playbackStopEventArgs.Item.Id}";
+            var semaphore = _syncLocks.GetOrAdd(lockKey, _ => new SemaphoreSlim(1, 1));
+
+            Task.Run(async () =>
+            {
+                if (await semaphore.WaitAsync(0).ConfigureAwait(false))
+                {
+                    try
+                    {
+                        _synchronizeService.SynchronizePlayState(syncToUser, playbackStopEventArgs.Item, playbackStopEventArgs.PlaybackPositionTicks, playbackStopEventArgs.PlayedToCompletion, CancellationToken.None);
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                }
+            });
         }
     }
+
+    [LoggerMessage(LogLevel.Information, "Starting Account Sync plugin and registering event handlers")]
+    partial void LogStartingAccountSyncPluginAndRegisteringEventHandlers();
+
+    [LoggerMessage(LogLevel.Information, "Stopping Account Sync plugin and unregistering event handlers")]
+    partial void LogStoppingAccountSyncPluginAndUnregisteringEventHandlers();
+
+    [LoggerMessage(LogLevel.Information, "UserDataSaved event triggered by {UserId}")]
+    partial void LogUserdatasavedEventTriggeredByUserid(Guid UserId);
+
+    [LoggerMessage(LogLevel.Information, "Item played state toggled manually. Syncing from {UserId}")]
+    partial void LogItemPlayedStateToggledManuallySyncingFromUserid(Guid UserId);
+
+    [LoggerMessage(LogLevel.Information, "Syncing from {UserId} to {@SyncToUsername}")]
+    partial void LogSyncingFromUseridToSynctousername(Guid UserId, string @SyncToUsername);
+
+    [LoggerMessage(LogLevel.Information, "Playback stopped. Syncing from {SessionUserName}")]
+    partial void LogPlaybackStoppedSyncingFromSessionusername(string SessionUserName);
+
+    [LoggerMessage(LogLevel.Information, "Syncing from {SessionUserName} to {@SyncToUsername}")]
+    partial void LogSyncingFromSessionusernameToSynctousername(string SessionUserName, string @SyncToUsername);
 }

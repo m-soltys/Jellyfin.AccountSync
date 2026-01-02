@@ -31,8 +31,7 @@ public class AccountSyncPlugin : BasePlugin<AccountSyncPluginConfiguration>, IHa
     }
 
     public IEnumerable<PluginPageInfo> GetPages()
-    {
-        return new[]
+        => new[]
         {
             new PluginPageInfo
             {
@@ -45,5 +44,4 @@ public class AccountSyncPlugin : BasePlugin<AccountSyncPluginConfiguration>, IHa
                 EmbeddedResourcePath = GetType().Namespace + ".Configuration.AccountSyncPluginConfigurationPage.js"
             }
         };
-    }
 }

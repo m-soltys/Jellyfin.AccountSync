@@ -25,7 +25,7 @@ public interface ISynchronizeService
         CancellationToken cancellationToken);
 }
 
-internal sealed class SynchronizeService : ISynchronizeService
+internal sealed partial class SynchronizeService : ISynchronizeService
 {
     private readonly ILogger<SynchronizeService> _logger;
     private readonly IUserDataManager _userDataManager;
@@ -56,12 +56,16 @@ internal sealed class SynchronizeService : ISynchronizeService
             return;
         }
 
-        _logger.LogInformation("From item data: {SyncFromItemData}", syncFromItemData.PropertiesToString());
-        _logger.LogInformation("To item data: {SyncToItemData}", syncToItemData.PropertiesToString());
+        LogFromItemDataSyncfromitemdata(syncFromItemData.PropertiesToString());
+        LogToItemDataSynctoitemdata(syncToItemData.PropertiesToString());
 
         syncToItemData.PlaybackPositionTicks = syncFromItemData.Played ? 0 : syncFromItemData.PlaybackPositionTicks;
         syncToItemData.Played = syncFromItemData.Played;
-        syncToItemData.PlayCount += 1;
+        if (syncFromItemData.Played)
+        {
+            syncToItemData.PlayCount += 1;
+        }
+
         syncToItemData.LastPlayedDate = syncFromItemData.LastPlayedDate;
         syncToItemData.AudioStreamIndex = syncFromItemData.AudioStreamIndex;
         syncToItemData.SubtitleStreamIndex = syncFromItemData.SubtitleStreamIndex;
@@ -83,16 +87,34 @@ internal sealed class SynchronizeService : ISynchronizeService
             return;
         }
 
-        _logger.LogInformation("Played position: {PlaybackPositionTicks}, played to completion: {PlayedToCompletion}", playbackPositionTicks, playedToCompletion);
-        _logger.LogInformation("To item data: {SyncToUserItemData}", syncToUserItemData.PropertiesToString());
+        LogPlayedPositionPlaybackpositionticksPlayedToCompletionPlayedtocompletion(playbackPositionTicks, playedToCompletion);
+        LogToItemDataSynctouseritemdata(syncToUserItemData.PropertiesToString());
 
         var now = DateTime.Now;
 
         syncToUserItemData.PlaybackPositionTicks = playedToCompletion ? 0 : playbackPositionTicks ?? 0;
+
+        var wasNotPlayedBefore = !syncToUserItemData.Played;
         syncToUserItemData.Played = playedToCompletion;
-        syncToUserItemData.PlayCount++;
+        if (playedToCompletion && wasNotPlayedBefore)
+        {
+            syncToUserItemData.PlayCount++;
+        }
+
         syncToUserItemData.LastPlayedDate = now;
 
         _userDataManager.SaveUserData(syncToUser, item, syncToUserItemData, UserDataSaveReason.PlaybackProgress, cancellationToken);
     }
+
+    [LoggerMessage(LogLevel.Information, "From item data: {SyncFromItemData}")]
+    partial void LogFromItemDataSyncfromitemdata(string SyncFromItemData);
+
+    [LoggerMessage(LogLevel.Information, "To item data: {SyncToItemData}")]
+    partial void LogToItemDataSynctoitemdata(string SyncToItemData);
+
+    [LoggerMessage(LogLevel.Information, "Played position: {PlaybackPositionTicks}, played to completion: {PlayedToCompletion}")]
+    partial void LogPlayedPositionPlaybackpositionticksPlayedToCompletionPlayedtocompletion(long? PlaybackPositionTicks, bool PlayedToCompletion);
+
+    [LoggerMessage(LogLevel.Information, "To item data: {SyncToUserItemData}")]
+    partial void LogToItemDataSynctouseritemdata(string SyncToUserItemData);
 }

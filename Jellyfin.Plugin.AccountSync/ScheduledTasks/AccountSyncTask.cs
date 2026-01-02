@@ -12,25 +12,13 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.AccountSync.ScheduledTasks;
 
-public class AccountSync : IScheduledTask, IConfigurableScheduledTask
+public partial class AccountSyncTask(
+    IUserManager userManager,
+    ILibraryManager libraryManager,
+    ISynchronizeService synchronizeService,
+    ILogger<AccountSyncTask> logger)
+    : IScheduledTask, IConfigurableScheduledTask
 {
-    private readonly ILibraryManager _libraryManager;
-    private readonly ISynchronizeService _synchronizeService;
-    private readonly IUserManager _userManager;
-    private readonly ILogger<AccountSync> _logger;
-
-    public AccountSync(
-        IUserManager userManager,
-        ILibraryManager libraryManager,
-        ISynchronizeService synchronizeService,
-        ILogger<AccountSync> logger)
-    {
-        _userManager = userManager;
-        _libraryManager = libraryManager;
-        _synchronizeService = synchronizeService;
-        _logger = logger;
-    }
-
     public bool IsHidden
         => false;
 
@@ -66,31 +54,44 @@ public class AccountSync : IScheduledTask, IConfigurableScheduledTask
 
         if (AccountSyncPlugin.Instance is null)
         {
-            _logger.LogWarning("AccountSyncPlugin.Instance is null. Cannot execute sync.");
+            LogAccountsyncpluginInstanceIsNullCannotExecuteSync();
             return Task.CompletedTask;
         }
 
         try
         {
+            if (AccountSyncPlugin.Instance.Configuration.SyncList.Count == 0)
+            {
+                progress.Report(100.0);
+                return Task.CompletedTask;
+            }
+
             var currentProgress = 0.0;
             var progressPerUser = 100.0 / AccountSyncPlugin.Instance.Configuration.SyncList.Count;
             foreach (var syncProfile in AccountSyncPlugin.Instance.Configuration.SyncList)
             {
-                var syncToUser = _userManager.GetUserById(syncProfile.SyncToAccount);
-                var syncFromUser = _userManager.GetUserById(syncProfile.SyncFromAccount);
+                var syncToUser = userManager.GetUserById(syncProfile.SyncToAccount);
+                var syncFromUser = userManager.GetUserById(syncProfile.SyncFromAccount);
 
                 if (syncToUser is null || syncFromUser is null)
                 {
-                    _logger.LogWarning("Could not find sync users. SyncTo: {SyncTo}, SyncFrom: {SyncFrom}", syncProfile.SyncToAccount, syncProfile.SyncFromAccount);
+                    LogCouldNotFindSyncUsersSynctoSynctoSyncfromSyncfrom(syncProfile.SyncToAccount, syncProfile.SyncFromAccount);
                     continue;
                 }
 
-                var queryItems = _libraryManager.GetItemList(new InternalItemsQuery { IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Episode } });
+                var queryItems = libraryManager.GetItemList(new InternalItemsQuery { IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Episode } });
+
+                if (queryItems == null || queryItems.Count == 0)
+                {
+                    currentProgress += progressPerUser;
+                    progress.Report(currentProgress);
+                    continue;
+                }
 
                 var progressPerItem = progressPerUser / queryItems.Count;
                 foreach (var item in queryItems)
                 {
-                    _synchronizeService.SynchronizeItemState(syncToUser, syncFromUser, item, cancellationToken);
+                    synchronizeService.SynchronizeItemState(syncToUser, syncFromUser, item, cancellationToken);
 
                     currentProgress += progressPerItem;
                     progress.Report(currentProgress);
@@ -99,11 +100,21 @@ public class AccountSync : IScheduledTask, IConfigurableScheduledTask
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during AccountSync scheduled task");
+            LogErrorDuringAccountsyncScheduledTask(ex);
+            throw;
         }
 
         progress.Report(100.0);
 
         return Task.CompletedTask;
     }
+
+    [LoggerMessage(LogLevel.Warning, "AccountSyncPlugin.Instance is null. Cannot execute sync.")]
+    partial void LogAccountsyncpluginInstanceIsNullCannotExecuteSync();
+
+    [LoggerMessage(LogLevel.Warning, "Could not find sync users. SyncTo: {SyncTo}, SyncFrom: {SyncFrom}")]
+    partial void LogCouldNotFindSyncUsersSynctoSynctoSyncfromSyncfrom(Guid SyncTo, Guid SyncFrom);
+
+    [LoggerMessage(LogLevel.Error, "Error during AccountSync scheduled task")]
+    partial void LogErrorDuringAccountsyncScheduledTask(Exception exception);
 }

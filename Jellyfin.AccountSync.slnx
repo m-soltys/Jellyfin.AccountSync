@@ -1,3 +1,7 @@
 <Solution>
+  <Folder Name="/SolutionItems/">
+    <File Path=".editorconfig" />
+  </Folder>
+  <Project Path="Jellyfin.Plugin.AccountSync.Tests/Jellyfin.Plugin.AccountSync.Tests.csproj" />
   <Project Path="Jellyfin.Plugin.AccountSync/Jellyfin.Plugin.AccountSync.csproj" />
 </Solution>
