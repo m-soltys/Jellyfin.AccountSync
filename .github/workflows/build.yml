@@ -3,7 +3,7 @@ name: Build and Release
 on:
   push:
     tags:
-      - '*'
+      - '*.*.*.*'  # Match version tags like 1.3.0.0
 
 jobs:
   build:
@@ -12,11 +12,19 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '9.0.x'
+
+    - name: Get version from tag
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/}
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "Building version: $VERSION"
 
     - name: Restore dependencies
       run: dotnet restore
@@ -30,7 +38,33 @@ jobs:
     - name: Create ZIP
       run: |
         cd publish
-        zip -r ../AccountSync.dll.zip Jellyfin.Plugin.AccountSync.dll
+        ZIP_NAME="Jellyfin.AccountSync-v${VERSION}.zip"
+        zip -r "../$ZIP_NAME" Jellyfin.Plugin.AccountSync.dll
+        echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+    - name: Calculate MD5 checksum
+      run: |
+        CHECKSUM=$(md5sum "$ZIP_NAME" | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')
+        echo "CHECKSUM=$CHECKSUM" >> $GITHUB_ENV
+        echo "MD5 checksum: $CHECKSUM"
+
+    - name: Update manifest.json
+      run: |
+        # Add new version entry to the versions array
+        ZIP_URL="https://github.com/m-soltys/Jellyfin.AccountSync/releases/download/$VERSION/Jellyfin.AccountSync-v$VERSION.zip"
+        NEW_VERSION=$(jq -n --arg version "$VERSION" --arg checksum "$CHECKSUM" --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg zipurl "$ZIP_URL" \
+        '{version: $version, changelog: "Automated release", targetAbi: "10.9.0.0", sourceUrl: $zipurl, checksum: $checksum, timestamp: $timestamp}')
+
+        # Append new version to the versions array
+        jq --argjson newVersion "$NEW_VERSION" '.[].versions += [$newVersion]' manifest.json > manifest_temp.json && mv manifest_temp.json manifest.json
+
+    - name: Commit and push manifest update
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add manifest.json
+        git commit -m "Update manifest for version $VERSION" || echo "No changes to commit"
+        git push
 
     - name: Create Release
       uses: actions/create-release@v1
@@ -38,10 +72,10 @@ jobs:
       with:
         draft: false
         prerelease: false
-        release_name: ${{ github.ref }}
-        tag_name: ${{ github.ref }}
+        release_name: Release ${{ env.VERSION }}
+        tag_name: ${{ env.VERSION }}
         body: |
-          Automated release of AccountSync plugin.
+          Automated release of AccountSync plugin v${{ env.VERSION }}.
       env:
         GITHUB_TOKEN: ${{ github.token }}
 
@@ -51,6 +85,6 @@ jobs:
         GITHUB_TOKEN: ${{ github.token }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./AccountSync.dll.zip
-        asset_name: AccountSync.dll.zip
+        asset_path: ./${{ env.ZIP_NAME }}
+        asset_name: ${{ env.ZIP_NAME }}
         asset_content_type: application/zip
