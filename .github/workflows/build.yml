@@ -51,7 +51,9 @@ jobs:
 
     - name: Update manifest.json
       run: |
-        git checkout master
+        git fetch origin master
+        git checkout origin/master -- manifest.json
+        ZIP_URL="https://github.com/m-soltys/Jellyfin.AccountSync/releases/download/$VERSION/Jellyfin.AccountSync-v$VERSION.zip"
         NEW_VERSION=$(jq -n --arg version "$VERSION" --arg checksum "$CHECKSUM" --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg zipurl "$ZIP_URL" \
         '{version: $version, changelog: "Automated release", targetAbi: "10.9.0.0", sourceUrl: $zipurl, checksum: $checksum, timestamp: $timestamp}')
 
@@ -60,6 +62,11 @@ jobs:
 
     - name: Commit and push manifest update
       run: |
+        git checkout master
+        git pull origin master
+        cp manifest.json manifest_backup.json
+        git checkout origin/master -- manifest.json
+        jq --argjson newVersion "$(cat manifest_backup.json | jq '.[].versions[0]')" '.[].versions += [$newVersion]' manifest.json > manifest_temp.json && mv manifest_temp.json manifest.json
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add manifest.json
