@@ -12,7 +12,7 @@
         "changelog": "Fix TypeLoadException for Jellyfin 10.11.5 compatibility",
         "targetAbi": "10.9.0.0",
         "sourceUrl": "https://github.com/m-soltys/Jellyfin.AccountSync/releases/download/v1.3/AccountSync.dll.zip",
-        "checksum": "",
+        "checksum": "aff5570cecc2f9bb85ebdc473e86ec7418fe2d48bc530aff5ba0525d15bd80ee",
         "timestamp": "2026-01-02T20:00:00Z"
       }
     ]
